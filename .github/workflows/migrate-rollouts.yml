@@ -1,0 +1,647 @@
+name: Migrate all original selected policy rollouts
+
+"on":
+  push:
+    branches: [main]
+    paths: [migration-request.json]
+  workflow_dispatch:
+    inputs:
+      prototype_verified:
+        description: Original sample playback and long seeking have passed
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: original-rollout-release-migration
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts
+          persist-credentials: false
+      - name: Check approved request, real prototype evidence, and complete committed source list
+        env:
+          MIGRATION_EVENT: ${{ github.event_name }}
+          MIGRATION_PROTOTYPE_INPUT: ${{ inputs.prototype_verified }}
+        run: >-
+          python3 scripts/release-migration-control.py preflight
+          --plan release-plan.json --prototype prototype-verification.json
+          --event "$MIGRATION_EVENT" --prototype-input "$MIGRATION_PROTOTYPE_INPUT"
+          --request migration-request.json --repository "$GITHUB_REPOSITORY" --git-tree
+
+  dp_robocasa:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/dp_robocasa
+          persist-credentials: true
+      - name: Resume verified original dp_robocasa files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy dp_robocasa
+          --create-releases --write-interval 8 --report reports/dp_robocasa.json
+          --failure-report reports/dp_robocasa-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/dp_robocasa-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/dp_robocasa-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-dp_robocasa
+          path: reports/dp_robocasa.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  dreamzero:
+    needs: dp_robocasa
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/dreamzero
+          persist-credentials: true
+      - name: Resume verified original dreamzero files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy dreamzero
+          --create-releases --write-interval 8 --report reports/dreamzero.json
+          --failure-report reports/dreamzero-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/dreamzero-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/dreamzero-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-dreamzero
+          path: reports/dreamzero.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  fastwam:
+    needs: dreamzero
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/fastwam
+          persist-credentials: true
+      - name: Resume verified original fastwam files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy fastwam
+          --create-releases --write-interval 8 --report reports/fastwam.json
+          --failure-report reports/fastwam-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/fastwam-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/fastwam-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-fastwam
+          path: reports/fastwam.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  gr00t:
+    needs: fastwam
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/gr00t
+          persist-credentials: true
+      - name: Resume verified original gr00t files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy gr00t
+          --create-releases --write-interval 8 --report reports/gr00t.json
+          --failure-report reports/gr00t-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/gr00t-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/gr00t-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-gr00t
+          path: reports/gr00t.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  internvla_a15:
+    needs: gr00t
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/internvla_a15
+          persist-credentials: true
+      - name: Resume verified original internvla_a15 files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy internvla_a15
+          --create-releases --write-interval 8 --report reports/internvla_a15.json
+          --failure-report reports/internvla_a15-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/internvla_a15-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/internvla_a15-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-internvla_a15
+          path: reports/internvla_a15.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  pi05:
+    needs: internvla_a15
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/pi05
+          persist-credentials: true
+      - name: Resume verified original pi05 files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy pi05
+          --create-releases --write-interval 8 --report reports/pi05.json
+          --failure-report reports/pi05-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/pi05-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/pi05-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-pi05
+          path: reports/pi05.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  prts:
+    needs: pi05
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/prts
+          persist-credentials: true
+      - name: Resume verified original prts files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy prts
+          --create-releases --write-interval 8 --report reports/prts.json
+          --failure-report reports/prts-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/prts-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/prts-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-prts
+          path: reports/prts.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  psi0:
+    needs: prts
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/psi0
+          persist-credentials: true
+      - name: Resume verified original psi0 files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy psi0
+          --create-releases --write-interval 8 --report reports/psi0.json
+          --failure-report reports/psi0-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/psi0-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/psi0-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-psi0
+          path: reports/psi0.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  smolvla:
+    needs: psi0
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/smolvla
+          persist-credentials: true
+      - name: Resume verified original smolvla files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy smolvla
+          --create-releases --write-interval 8 --report reports/smolvla.json
+          --failure-report reports/smolvla-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/smolvla-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/smolvla-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-smolvla
+          path: reports/smolvla.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  starvla:
+    needs: smolvla
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/starvla
+          persist-credentials: true
+      - name: Resume verified original starvla files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy starvla
+          --create-releases --write-interval 8 --report reports/starvla.json
+          --failure-report reports/starvla-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/starvla-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/starvla-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-starvla
+          path: reports/starvla.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  xr1:
+    needs: starvla
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/xr1
+          persist-credentials: true
+      - name: Resume verified original xr1 files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy xr1
+          --create-releases --write-interval 8 --report reports/xr1.json
+          --failure-report reports/xr1-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/xr1-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/xr1-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-xr1
+          path: reports/xr1.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  xvla:
+    needs: xr1
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            originals/xvla
+          persist-credentials: true
+      - name: Resume verified original xvla files with serial paced writes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py sync
+          --manifest release-plan.json --policy xvla
+          --create-releases --write-interval 8 --report reports/xvla.json
+          --failure-report reports/xvla-failure.json
+      - name: Publish only a safe classified failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/xvla-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/xvla-failure.json --run-id "$GITHUB_RUN_ID" \
+            --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout migration failure status'
+          git push origin HEAD:main
+      - name: Retain public-safe progress, including a partial failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-verified-xvla
+          path: reports/xvla.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30
+
+  finalize:
+    needs: xvla
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            scripts
+            hosting
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-verified-*
+          merge-multiple: true
+          path: policy-reports
+      - name: Independently read and verify all 7,607 remote digests and byte counts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          python3 scripts/github-release-media.py verify
+          --manifest release-plan.json --report final-remote.json
+          --failure-report reports/final-verify-failure.json
+      - name: Publish only a safe final-read failure for autonomous recovery
+        if: failure()
+        run: |
+          if [ ! -f reports/final-verify-failure.json ]; then exit 0; fi
+          git fetch origin main
+          git checkout -B codex/publish-failure-status origin/main
+          python3 scripts/release-migration-control.py failure-status \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --failure-report reports/final-verify-failure.json --run-id "$GITHUB_RUN_ID" \
+            --failure-scope final-verify --output migration-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add migration-status.json
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'Record safe original rollout final verification failure status'
+          git push origin HEAD:main
+      - name: Commit complete public proof to this repository only
+        run: |
+          git fetch origin main
+          git checkout -B codex/publish-complete-proof origin/main
+          python3 scripts/release-migration-control.py finalize \
+            --plan release-plan.json --prototype prototype-verification.json \
+            --reports policy-reports --remote-report final-remote.json \
+            --output hosting/policy-rollouts-releases.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add hosting/policy-rollouts-releases.json
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m 'Publish fully verified original rollout release index'
+          git push origin HEAD:main
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: final-rollout-verification
+          path: |
+            final-remote.json
+            hosting/policy-rollouts-releases.json
+          if-no-files-found: warn
+          overwrite: true
+          retention-days: 30

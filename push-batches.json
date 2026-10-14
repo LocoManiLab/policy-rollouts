@@ -1,0 +1,77 @@
+{
+  "batches": [
+    {
+      "policy": "dp_robocasa",
+      "count": 505,
+      "bytes": 319324251,
+      "sourceDirectory": "originals/dp_robocasa"
+    },
+    {
+      "policy": "dreamzero",
+      "count": 441,
+      "bytes": 304856952,
+      "sourceDirectory": "originals/dreamzero"
+    },
+    {
+      "policy": "fastwam",
+      "count": 477,
+      "bytes": 285957629,
+      "sourceDirectory": "originals/fastwam"
+    },
+    {
+      "policy": "gr00t",
+      "count": 729,
+      "bytes": 491848508,
+      "sourceDirectory": "originals/gr00t"
+    },
+    {
+      "policy": "internvla_a15",
+      "count": 762,
+      "bytes": 475497357,
+      "sourceDirectory": "originals/internvla_a15"
+    },
+    {
+      "policy": "pi05",
+      "count": 730,
+      "bytes": 478344109,
+      "sourceDirectory": "originals/pi05"
+    },
+    {
+      "policy": "prts",
+      "count": 617,
+      "bytes": 427867486,
+      "sourceDirectory": "originals/prts"
+    },
+    {
+      "policy": "psi0",
+      "count": 669,
+      "bytes": 449508048,
+      "sourceDirectory": "originals/psi0"
+    },
+    {
+      "policy": "smolvla",
+      "count": 687,
+      "bytes": 428519900,
+      "sourceDirectory": "originals/smolvla"
+    },
+    {
+      "policy": "starvla",
+      "count": 639,
+      "bytes": 284085072,
+      "sourceDirectory": "originals/starvla"
+    },
+    {
+      "policy": "xr1",
+      "count": 716,
+      "bytes": 423676490,
+      "sourceDirectory": "originals/xr1"
+    },
+    {
+      "policy": "xvla",
+      "count": 635,
+      "bytes": 367919120,
+      "sourceDirectory": "originals/xvla"
+    }
+  ],
+  "maxBatchBytes": 491848508
+}

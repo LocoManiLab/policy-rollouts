@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "repository": "LocoManiLab/policy-rollouts",
+  "tag": "v0.1-playback-test-20261014",
+  "playback": true,
+  "seek": true,
+  "verifiedAt": "2026-10-14T07:34:05.299190+00:00",
+  "samples": [
+    {
+      "id": "2d3138e60bd594926172",
+      "sha256": "0ed783824b8497e4bfb6a179ac0cee1c7418425e6daec3cd8767baa0f01d8ed8",
+      "bytes": 122374,
+      "duration": 4.54,
+      "playback": true,
+      "seek": false,
+      "seekSeconds": null,
+      "error": null
+    },
+    {
+      "id": "39236229d70d2ef3a094",
+      "sha256": "fca5a494a563b2ed9557ac2c2c1e130e83a8e905ebc157b04685d0bc8e36eb6a",
+      "bytes": 894044,
+      "duration": 118.44,
+      "playback": true,
+      "seek": true,
+      "seekSeconds": 60,
+      "error": null
+    },
+    {
+      "id": "f7a24a0134f6a9a37443",
+      "sha256": "cf09a839d00060aaea112366f50a40fac46ebe106f93b22112a8752801b23404",
+      "bytes": 2258662,
+      "duration": 107.4,
+      "playback": true,
+      "seek": true,
+      "seekSeconds": 60,
+      "error": null
+    },
+    {
+      "id": "30be0f896096aa15b311",
+      "sha256": "6c98b46408861ae80585b5e1407ba1379a99f7eac4742cbef870084d5156b09e",
+      "bytes": 110080,
+      "duration": 6.0,
+      "playback": true,
+      "seek": false,
+      "seekSeconds": null,
+      "error": null
+    },
+    {
+      "id": "be800a70b5fcad9e20c0",
+      "sha256": "5b637a2240a8dcb2f40720a3656775047550cbb572d484f2b53b4cda764fbabe",
+      "bytes": 54387,
+      "duration": 2.82,
+      "playback": true,
+      "seek": false,
+      "seekSeconds": null,
+      "error": null
+    }
+  ]
+}
