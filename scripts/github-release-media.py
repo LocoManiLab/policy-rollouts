@@ -3,7 +3,7 @@
 
 `plan` is entirely offline and writes a PRIVATE manifest containing local paths.
 `verify` only reads remote metadata. `sync` uploads assets and can recover only
-its exactly labelled empty upload stubs. Uploaded/unknown collisions are kept;
+its exactly labelled incomplete upload stubs. Uploaded/unknown collisions are kept;
 it does not publish a local manifest or obtain new credentials.
 Authentication is read from GH_TOKEN/GITHUB_TOKEN or an existing gh login.
 
@@ -38,6 +38,11 @@ DEFAULT_REPO = "LocoManiLab/policy-rollouts"
 ASSET_NAME = re.compile(r"[a-f0-9]{20}\.mp4")
 API_VERSION = "2026-03-10"
 OWNER_LABEL_PREFIX = "locomanilab-original:"
+# Ignore counters such as download_count when confirming a directory snapshot:
+# playback must not make otherwise unchanged original assets appear unstable.
+ASSET_SNAPSHOT_FIELDS = (
+    "id", "name", "state", "size", "digest", "content_type", "label", "browser_download_url",
+)
 
 
 class TransferError(RuntimeError):
@@ -76,14 +81,19 @@ def owner_label(entry: dict) -> str:
     return OWNER_LABEL_PREFIX + clip_id + ":" + fingerprint
 
 
-def owned_empty_starter(asset: dict, entry: dict) -> bool:
+def owned_incomplete_starter(asset: dict, entry: dict) -> bool:
+    # A failed GitHub upload can leave state=starter while size retains the
+    # declared Content-Length (observed for gr00t, 157435 bytes, after a 502).
+    # Only zero or that exact original length is recoverable, never another
+    # nonzero size, an uploaded asset, or an asset with any digest.
     return (
         isinstance(asset, dict)
         and asset.get("label") == owner_label(entry)
         and asset.get("name") == entry["assetName"]
         and asset.get("state") == "starter"
         and type(asset.get("size")) is int
-        and asset["size"] == 0
+        and type(entry.get("bytes")) is int and entry["bytes"] > 0
+        and asset["size"] in (0, entry["bytes"])
         and asset.get("digest") is None
         and asset.get("content_type") == "video/mp4"
         and type(asset.get("id")) is int
@@ -207,6 +217,8 @@ class GitHubAPI:
             "X-GitHub-Api-Version": API_VERSION,
             "User-Agent": "locomanilab-release-media",
         }
+        if method == "GET":
+            headers["Cache-Control"] = "no-cache"
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         if content_type:
@@ -274,17 +286,55 @@ class GitHubAPI:
             return self.get(url)[0]
 
     def assets(self, release: dict) -> dict:
-        url = release["assets_url"] + "?per_page=100"
-        assets = {}
-        while url:
-            page, headers = self.get(url)
-            for item in page:
-                if item["name"] in assets:
-                    raise TransferError("Duplicate remote asset names need manual resolution.")
-                assets[item["name"]] = item
-            links = re.findall(r'<([^>]+)>;\s*rel="([^"]+)"', headers.get("link", ""))
-            url = next((target for target, relation in links if relation == "next"), None)
-        return assets
+        # On 2026-10-14, a 502 during the 351st gr00t upload was followed by
+        # overlapping asset-list pages. Dropping duplicate rows would hide a
+        # potentially missing row and make a subsequent upload unsafe. Discard
+        # that scan, then require two complete, matching scans before writing.
+        previous = None
+        observed_name_ids = {}
+        for attempt in range(5):
+            url = release["assets_url"] + "?per_page=100"
+            assets, asset_ids, visited_pages = {}, set(), set()
+            overlap = False
+            while url:
+                if url in visited_pages:
+                    raise TransferError("Remote asset pagination did not finish; retry a fresh listing.", category="transient")
+                visited_pages.add(url)
+                page, headers = self.get(url)
+                if not isinstance(page, list):
+                    raise TransferError("Remote asset listing was not a complete page.", category="transient")
+                for item in page:
+                    if (
+                        not isinstance(item, dict)
+                        or type(item.get("id")) is not int or item["id"] <= 0
+                        or not isinstance(item.get("name"), str) or not item["name"]
+                    ):
+                        raise TransferError("Remote asset listing lacked asset identity.", category="transient")
+                    name, asset_id = item["name"], item["id"]
+                    if name in observed_name_ids and observed_name_ids[name] != asset_id:
+                        raise TransferError("Different remote assets share a filename; collision retained.", category="collision")
+                    observed_name_ids[name] = asset_id
+                    if name in assets or asset_id in asset_ids:
+                        overlap = True
+                    assets[name] = item
+                    asset_ids.add(asset_id)
+                links = re.findall(r'<([^>]+)>;\s*rel="([^"]+)"', headers.get("link", ""))
+                url = next((target for target, relation in links if relation == "next"), None)
+            snapshot = {
+                name: tuple(item.get(field) for field in ASSET_SNAPSHOT_FIELDS)
+                for name, item in assets.items()
+            }
+            if not overlap and previous == snapshot:
+                return assets
+            previous = None if overlap else snapshot
+            print(json.dumps({
+                "event": "asset-list-confirmation", "scan": attempt + 1,
+                "reason": "overlapping-pages" if overlap else "awaiting-matching-complete-scan",
+                "entries": len(assets),
+            }), flush=True)
+            if attempt < 4:
+                self.pause(2**attempt)
+        raise TransferError("Remote asset listing stayed unstable; retry without changing assets.", category="transient")
 
     def upload(self, release: dict, entry: dict):
         # GitHub's documented upload hypermedia template exposes both query
@@ -305,8 +355,9 @@ class GitHubAPI:
             return self.request("POST", url, stream, entry.get("contentType", "video/mp4"), entry["bytes"])[0]
 
     def delete_starter(self, asset: dict, entry: dict):
-        if not owned_empty_starter(asset, entry):
-            raise TransferError("Refusing to delete an unowned or nonempty release asset.", category="collision")
+        if not owned_incomplete_starter(asset, entry):
+            raise TransferError("Refusing to delete an unowned or completed release asset.", category="collision")
+        check_local(entry)
         url = self.prefix + "/releases/assets/" + str(asset["id"])
         # Wait before the fresh GET, so the write gap does not leave a stale
         # starter observation sitting for eight seconds before deletion.
@@ -317,10 +368,10 @@ class GitHubAPI:
             if error.status == 404:
                 return
             raise
-        if not isinstance(current, dict) or current.get("id") != asset["id"] or not owned_empty_starter(current, entry):
-            raise TransferError("The owned empty starter changed; reconcile without deleting it.", category="collision")
+        if not isinstance(current, dict) or current.get("id") != asset["id"] or not owned_incomplete_starter(current, entry):
+            raise TransferError("The owned incomplete starter changed; reconcile without deleting it.", category="collision")
         self.request("DELETE", url)
-        print(json.dumps({"event": "owned-empty-starter-deleted", "id": entry["id"], "assetId": asset["id"]}), flush=True)
+        print(json.dumps({"event": "owned-incomplete-starter-deleted", "id": entry["id"], "assetId": asset["id"]}), flush=True)
 
 def check_local(entry: dict) -> None:
     path = Path(entry["localPath"])
@@ -345,7 +396,7 @@ def sync_asset(api, release, entry, known):
     for attempt in range(5):
         asset = known.get(name)
         if asset:
-            if not owned_empty_starter(asset, entry):
+            if not owned_incomplete_starter(asset, entry):
                 check_remote(asset, entry)
                 return asset, "existing"
             delete_error = None
@@ -368,10 +419,10 @@ def sync_asset(api, release, entry, known):
                 if remaining.get("state") == "uploaded":
                     check_remote(remaining, entry)
                     return remaining, "reconciled"
-                if not owned_empty_starter(remaining, entry) or remaining["id"] != asset["id"]:
+                if not owned_incomplete_starter(remaining, entry) or remaining["id"] != asset["id"]:
                     raise TransferError(f"Changed or unowned incomplete asset {name} retained.", category="collision")
                 if attempt == 4:
-                    raise TransferError(f"Owned empty starter {name} could not be removed; rerun to reconcile.", category="transient")
+                    raise TransferError(f"Owned incomplete starter {name} could not be removed; rerun to reconcile.", category="transient")
                 api.pause(retry_delay(delete_error, attempt) if delete_error and not delete_error.rate_limited and delete_error.status != 429 else min(60, 2**attempt))
                 continue
         # A retry must still upload the original bytes bound by the label.
@@ -405,8 +456,8 @@ def sync_asset(api, release, entry, known):
             if known[name].get("state") == "uploaded":
                 check_remote(known[name], entry)
                 return known[name], "reconciled"
-            if not owned_empty_starter(known[name], entry):
-                raise TransferError(f"Unowned or nonempty incomplete asset {name} retained.", category="collision")
+            if not owned_incomplete_starter(known[name], entry):
+                raise TransferError(f"Unowned or unexpected incomplete asset {name} retained.", category="collision")
         if upload_error is not None and upload_error.status == 422 and name not in known:
             raise upload_error
         if attempt == 4:
